@@ -3,13 +3,31 @@ using System.Collections.Concurrent;
 
 namespace Ning.Sample
 {
+    /// <summary>
+    /// Public interface for Service Client pool
+    /// </summary>
     public interface IPooledServiceClientFactory
     {
-        public ServiceClient AcquireServiceClientInstance();
+        /// <summary>
+        /// Get / loan a resource from the pool
+        /// </summary>
+        /// <returns></returns>
+        public ServiceClient Acquire();
+        /// <summary>
+        /// Return loaded resource to the pool
+        /// </summary>
+        /// <param name="serviceClient"></param>
         public void Release(ServiceClient serviceClient);
+        /// <summary>
+        /// Current pool capacity
+        /// </summary>
+        /// <returns></returns>
         public int PoolCapacity();
     }
 
+    /// <summary>
+    /// Main class for Service Client pool
+    /// </summary>
     public class PooledServiceClientFactory : IPooledServiceClientFactory, IDisposable
     {
         #region Private Members
@@ -49,7 +67,7 @@ namespace Ning.Sample
         /// Never used as shared or static variable
         /// </summary>
         /// <returns></returns>
-        public ServiceClient AcquireServiceClientInstance()
+        public ServiceClient Acquire()
         {
             // If resource available, return immediately
             if (_serviceClientPool.TryTake(out ServiceClient? resource))
