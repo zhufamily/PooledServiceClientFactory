@@ -22,7 +22,12 @@ namespace Ning.Sample
         /// Current pool capacity
         /// </summary>
         /// <returns></returns>
-        public int PoolCapacity();
+        public int PoolTotalCapacity();
+        /// <summary>
+        /// Current available resources in the pool
+        /// </summary>
+        /// <returns></returns>
+        public int PoolAvailableCapacity();
     }
 
     /// <summary>
@@ -35,9 +40,12 @@ namespace Ning.Sample
         private BlockingCollection<ServiceClient> _serviceClientPool;
         private bool _disposed = false;
         private object _lock = new object();
+        private int _initCapacity;
         private int _currentCapacity;
         private int _maxCapacity;
         private int _step;
+        private int _lowestAvailableResources;
+        private Timer _timer;
         #endregion
 
         /// <summary>
@@ -48,16 +56,45 @@ namespace Ning.Sample
             // Init private members
             _dataverseConnectionString = dataverseConnectionString;
             _serviceClientPool = new BlockingCollection<ServiceClient>();
+            _initCapacity = capacity;
             _currentCapacity = capacity;
             _maxCapacity = capacity * 4;
             _step = _currentCapacity / 2 > 1 ? _currentCapacity / 2 : 1;
-
+            _lowestAvailableResources = _currentCapacity;
             for (int i = 0; i < _currentCapacity; i++)
             {
                 ServiceClient client = new ServiceClient(_dataverseConnectionString);
                 client.UseWebApi = true;
                 client.DisableCrossThreadSafeties = true;
                 _serviceClientPool.Add(client);
+            }
+            _timer = new Timer(Scaleback, null, TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(30));
+        }
+
+        /// <summary>
+        /// Scaleback -- check every 30 minutes
+        /// </summary>
+        /// <param name="state"></param>
+        private void Scaleback(object? state = null)
+        {
+            lock (_lock)
+            {
+                if (_currentCapacity - _initCapacity >= _step && _lowestAvailableResources >= _step)
+                {
+                    for (int i = 0; i < _step; i++)
+                    {
+                        if (_serviceClientPool.TryTake(out ServiceClient? discardClient))
+                        {
+                            discardClient.Dispose();
+                            _currentCapacity--;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                }
+                _lowestAvailableResources = _serviceClientPool.Count;
             }
         }
 
@@ -72,6 +109,10 @@ namespace Ning.Sample
             // If resource available, return immediately
             if (_serviceClientPool.TryTake(out ServiceClient? resource))
             {
+                if (_serviceClientPool.Count < _lowestAvailableResources)
+                {
+                    _lowestAvailableResources = _serviceClientPool.Count;
+                }
                 return resource;
             }
 
@@ -92,7 +133,12 @@ namespace Ning.Sample
             }
 
             // Wait for next available resource
-            return _serviceClientPool.Take();
+            ServiceClient scopedClient = _serviceClientPool.Take();
+            if (_serviceClientPool.Count < _lowestAvailableResources)
+            {
+                _lowestAvailableResources = _serviceClientPool.Count;
+            }
+            return scopedClient;
         }
 
         /// <summary>
@@ -111,9 +157,19 @@ namespace Ning.Sample
         /// Not resources available, but total resources in recycling
         /// </summary>
         /// <returns></returns>
-        public int PoolCapacity()
+        public int PoolTotalCapacity()
         {
             return _currentCapacity;
+        }
+
+        /// <summary>
+        /// Get current available resource count
+        /// Not total resources in recycling but resources available
+        /// </summary>
+        /// <returns></returns>
+        public int PoolAvailableCapacity()
+        {
+            return _serviceClientPool.Count;
         }
 
         #region IDispose
@@ -142,6 +198,7 @@ namespace Ning.Sample
                 }
             }
         }
+
         #endregion
     }
 }
