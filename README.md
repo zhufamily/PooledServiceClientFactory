@@ -13,7 +13,8 @@ Most codes are self-explanatory, just a few setences to outline the main idea he
 The public interface is prepare for CDI whether for a .NET Core website or an Azure Function.\
 The main class should be initialized with a valid Dynamics 365 connection string, and a capacity that satisfy normal work load.\
 We assume at the peak time, you might need four times of normal work load, certainly please change that for your situation.\
-For each increasing number or resources in the pool, we set up to 50% of the original capacity, you can adjust that based on your need as well.
+If resource is running low and we are within peak capacity limit.  We will increase number or resources in the pool to 50% of the original capacity, for sure you can adjust that based on your need as well.\
+Every 30 minutes, we will check to see if pool is running at a high resource count, while resource usage is low.  If so, we will scale back 50% of the original capacity.
 ## Sample usage
 In program.cs, conduct a CDI like following.
 ```
@@ -37,5 +38,3 @@ Follow the pattern as shown above, you can avoid short-lived ServiceClient, and 
 Just pull down the source codes into VS2022 and compile them, then you are ready to go.
 ## License
 Free software, absolutely no warranty, use at your own risk!
-
-
