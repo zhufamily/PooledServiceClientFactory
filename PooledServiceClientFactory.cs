@@ -22,12 +22,12 @@ namespace Ning.Sample
         /// Current pool capacity
         /// </summary>
         /// <returns></returns>
-        public int PoolTotalCapacity();
+        public int TotalCapacity();
         /// <summary>
         /// Current available resources in the pool
         /// </summary>
         /// <returns></returns>
-        public int PoolAvailableCapacity();
+        public int AvailableCapacity();
     }
 
     /// <summary>
@@ -40,12 +40,12 @@ namespace Ning.Sample
         private BlockingCollection<ServiceClient> _serviceClientPool;
         private bool _disposed = false;
         private object _lock = new object();
-        private int _initCapacity;
+        private int _initialCapacity;
         private int _currentCapacity;
         private int _maxCapacity;
         private int _step;
-        private int _lowestAvailableResources;
-        private Timer _timer;
+        private int _lowestAvailableCapacity;
+        private readonly Timer _timer;
         #endregion
 
         /// <summary>
@@ -56,11 +56,11 @@ namespace Ning.Sample
             // Init private members
             _dataverseConnectionString = dataverseConnectionString;
             _serviceClientPool = new BlockingCollection<ServiceClient>();
-            _initCapacity = capacity;
+            _initialCapacity = capacity;
             _currentCapacity = capacity;
             _maxCapacity = capacity * 4;
             _step = _currentCapacity / 2 > 1 ? _currentCapacity / 2 : 1;
-            _lowestAvailableResources = _currentCapacity;
+            _lowestAvailableCapacity = _currentCapacity;
             for (int i = 0; i < _currentCapacity; i++)
             {
                 ServiceClient client = new ServiceClient(_dataverseConnectionString);
@@ -79,7 +79,7 @@ namespace Ning.Sample
         {
             lock (_lock)
             {
-                if (_currentCapacity - _initCapacity >= _step && _lowestAvailableResources >= _step)
+                if (_currentCapacity - _initialCapacity >= _step && _lowestAvailableCapacity >= _step)
                 {
                     for (int i = 0; i < _step; i++)
                     {
@@ -94,7 +94,7 @@ namespace Ning.Sample
                         }
                     }
                 }
-                _lowestAvailableResources = _serviceClientPool.Count;
+                _lowestAvailableCapacity = _serviceClientPool.Count;
             }
         }
 
@@ -109,9 +109,9 @@ namespace Ning.Sample
             // If resource available, return immediately
             if (_serviceClientPool.TryTake(out ServiceClient? resource))
             {
-                if (_serviceClientPool.Count < _lowestAvailableResources)
+                if (_serviceClientPool.Count < _lowestAvailableCapacity)
                 {
-                    _lowestAvailableResources = _serviceClientPool.Count;
+                    _lowestAvailableCapacity = _serviceClientPool.Count;
                 }
                 return resource;
             }
@@ -134,9 +134,9 @@ namespace Ning.Sample
 
             // Wait for next available resource
             ServiceClient scopedClient = _serviceClientPool.Take();
-            if (_serviceClientPool.Count < _lowestAvailableResources)
+            if (_serviceClientPool.Count < _lowestAvailableCapacity)
             {
-                _lowestAvailableResources = _serviceClientPool.Count;
+                _lowestAvailableCapacity = _serviceClientPool.Count;
             }
             return scopedClient;
         }
@@ -157,7 +157,7 @@ namespace Ning.Sample
         /// Not resources available, but total resources in recycling
         /// </summary>
         /// <returns></returns>
-        public int PoolTotalCapacity()
+        public int TotalCapacity()
         {
             return _currentCapacity;
         }
@@ -167,7 +167,7 @@ namespace Ning.Sample
         /// Not total resources in recycling but resources available
         /// </summary>
         /// <returns></returns>
-        public int PoolAvailableCapacity()
+        public int AvailableCapacity()
         {
             return _serviceClientPool.Count;
         }
