@@ -14,7 +14,7 @@ namespace Ning.Sample
         /// <returns></returns>
         public ServiceClient Acquire();
         /// <summary>
-        /// Return loaded resource to the pool
+        /// Return loaned resource to the pool
         /// </summary>
         /// <param name="serviceClient"></param>
         public void Release(ServiceClient serviceClient);
@@ -68,14 +68,14 @@ namespace Ning.Sample
                 client.DisableCrossThreadSafeties = true;
                 _serviceClientPool.Add(client);
             }
-            _timer = new Timer(Scaleback, null, TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(30));
+            _timer = new Timer(ScaleBack, null, TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(30));
         }
 
         /// <summary>
-        /// Scaleback -- check every 30 minutes
+        /// Scale back -- check every 30 minutes
         /// </summary>
         /// <param name="state"></param>
-        private void Scaleback(object? state = null)
+        private void ScaleBack(object? state = null)
         {
             lock (_lock)
             {
@@ -195,6 +195,8 @@ namespace Ning.Sample
                     {
                         client.Dispose();
                     }
+                    _serviceClientPool.Dispose();
+                    _timer.Dispose();
                 }
             }
         }
