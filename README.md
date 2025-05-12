@@ -9,7 +9,7 @@ We must find out a way to use ServiceClient as scoped instances, while not dispo
 Luckily, after some research we find out that .NET core has a built-in BlockingCollection<T> generic class for this kind of purpose.\
 Therefore, we come up with the idea of this pooled Service Client factory.
 ## Explanation of Codes
-Most codes are self-explanatory, just a few setences to outline the main idea here.\
+Most codes are self-explanatory, just a few sentences to outline the main idea here.\
 The public interface is prepare for CDI whether for a .NET Core website or an Azure Function.\
 The main class should be initialized with a valid Dynamics 365 connection string, and a capacity that satisfy normal work load.\
 We assume at the peak time, you might need four times of normal work load, certainly please change that for your situation.\
@@ -20,7 +20,7 @@ In program.cs, conduct a CDI like following.
 ```
 services.AddSingleton<IPooledServiceClientFactory>(new PooledServiceClientFactory(YOUR_CRM_CONNECTION_STRING, YOUR_INIT_CAPACITY));
 ```
-Whereever you need a scoped instnace, insert codes like following, assuming you have done CDI for your class.
+Where-ever you need a scoped instance, insert codes like following, assuming you have done CDI for your class.
 ```
 ServiceClient client = _clientFactory.Acquire();
 try
@@ -36,5 +36,9 @@ finally
 ## Conclusion
 Follow the pattern as shown above, you can avoid short-lived ServiceClient, and still using them as scoped instance to guarantee thread safe.\
 Just pull down the source codes into VS2022 and compile them, then you are ready to go.
+## Further Improvements
+1. Make initial capacity, max capacity and capacity increase / decrease step all configurable.
+2. Make better algorithm for scale up and scale back the resources.
+3. Make a generic class for resource pooling. 
 ## License
 Free software, absolutely no warranty, use at your own risk!
