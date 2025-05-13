@@ -12,8 +12,7 @@ namespace Ning.Sample
 
     public class PooledResourceFactory<T> : IPooledResourceFactory<T>, IDisposable
     {
-        private int _initialCapacity, _maxCapacity, _step, _intervalInMinutes, _prevIntervals, _currentCapacity;
-        private int [] _lowestResourcesAvailable;
+        private int _initialCapacity, _maxCapacity, _step, _intervalInMinutes, _currentCapacity, _lowestResourcesAvailable, _minResourcesRequired;
         private BlockingCollection<T> _resources = new BlockingCollection<T>();
         private Timer _timer;
         private object _lock = new object();
@@ -21,14 +20,15 @@ namespace Ning.Sample
         private Func<T> _factory;
 
         public PooledResourceFactory(Func<T> func, int initialCapacity = 16, int maxCapacity = 64, int step = 8, 
-            int intervalInMinutes = 5, int prevIntervals = 3)
+            int intervalInMinutes = 5, int minResourcesRequired = 2)
         {
             _initialCapacity = initialCapacity;
             _currentCapacity = initialCapacity;
+            _lowestResourcesAvailable = _initialCapacity;
             _maxCapacity = maxCapacity;
             _step = step;
             _intervalInMinutes = intervalInMinutes;
-            _prevIntervals = prevIntervals;
+            _minResourcesRequired = minResourcesRequired;
             _factory = func;
 
             for (int i = 0; i < _initialCapacity; i++)
@@ -36,12 +36,6 @@ namespace Ning.Sample
                 T resource = _factory();
                 _resources.Add(resource);
             }
-            _lowestResourcesAvailable = new int[_prevIntervals];
-            for (int i = 0; i < _prevIntervals - 1; i++)
-            {
-                _lowestResourcesAvailable[i] = -1;
-            }
-            _lowestResourcesAvailable[_prevIntervals - 1] = _initialCapacity;
             _timer = new Timer(ScaleResource, null, TimeSpan.FromMinutes(_intervalInMinutes), TimeSpan.FromMinutes(_intervalInMinutes));
         }
 
@@ -83,54 +77,24 @@ namespace Ning.Sample
         {
             lock (_lock)
             {
-                if (_lowestResourcesAvailable.All(x => x > _step) && _currentCapacity - _initialCapacity > _step)
+                if (_lowestResourcesAvailable > _step && _currentCapacity - _initialCapacity > _step)
                 {
                     ScaleIn();
                 }
-                else if (_lowestResourcesAvailable.All(x => (x < 2) && (x >= 0)) && _currentCapacity < _maxCapacity)
+                else if (_lowestResourcesAvailable < _minResourcesRequired && _currentCapacity < _maxCapacity)
                 {
                     ScaleOut();
                 }
 
-                for (int i = 1; i < _prevIntervals; i++)
-                {
-                    _lowestResourcesAvailable[i - 1] = _lowestResourcesAvailable[i];
-                }
-                _lowestResourcesAvailable[_prevIntervals - 1] = _resources.Count;
+                _lowestResourcesAvailable = _resources.Count;
                 return;   
             }
         }
 
         public T Acquire()
         {
-            T? resource;
-            // If resource available, return immediately
-            if (_resources.TryTake(out resource))
-            {
-                if (_resources.Count < _lowestResourcesAvailable[_prevIntervals - 1])
-                {
-                    _lowestResourcesAvailable[_prevIntervals - 1] = _resources.Count;
-                }
-                return resource;
-            }
-
-            // Increase capacity, if not yet reaching max capacity
-            // Increase resource capacity by step
-            if (Monitor.TryEnter(_lock))
-            {
-                try
-                {
-                    ScaleOut();
-                }
-                finally 
-                { 
-                    Monitor.Exit(_lock); 
-                }
-            }
-            
-            // Wait for next available resource
-            resource = _resources.Take();
-            _lowestResourcesAvailable[_prevIntervals - 1] = _resources.Count;
+            T resource = _resources.Take();
+            _lowestResourcesAvailable--;
             return resource;
         }
 
