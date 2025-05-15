@@ -14,8 +14,10 @@ namespace Ning.Sample
     /// </summary>
     public class PooledServiceClientFactory : PooledResourceFactory<ServiceClient>, IPooledServiceClientFactory
     {
+        #region Private members
         private ServiceClient _masterServiceClient;
         private bool _disposed = false;
+        #endregion
 
         /// <summary>
         /// Factory pattern to get instance
@@ -27,7 +29,6 @@ namespace Ning.Sample
             ServiceClient serviceClient = new ServiceClient(dataverseConnectionString);
             return new PooledServiceClientFactory(serviceClient);
         }
-
 
         /// <summary>
         /// Private constructor
@@ -42,6 +43,7 @@ namespace Ning.Sample
             _masterServiceClient = masterServiceClient;
         }
 
+        #region IDisposable
         ~PooledServiceClientFactory() => Dispose(false);
 
         protected override void Dispose(bool disposing)
@@ -58,5 +60,6 @@ namespace Ning.Sample
 
             base.Dispose(disposing);
         }
+        #endregion
     }
 }

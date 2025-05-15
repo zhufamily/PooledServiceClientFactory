@@ -2,6 +2,10 @@
 
 namespace Ning.Sample
 {
+    /// <summary>
+    /// Public interface for resource pool management
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
     public interface IPooledResourceFactory<T>
     { 
         public T Acquire();
@@ -10,15 +14,30 @@ namespace Ning.Sample
         public int AvailableCapacity();
     }
 
+    /// <summary>
+    /// Generic class for resource pool management
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
     public class PooledResourceFactory<T> : IPooledResourceFactory<T>, IDisposable
     {
+        #region Private members
         private int _initialCapacity, _maxCapacity, _step, _intervalInMinutes, _currentCapacity, _lowestResourcesAvailable, _minResourcesRequired;
         private BlockingCollection<T> _resources = new BlockingCollection<T>();
         private Timer _timer;
         private object _lock = new object();
         private bool _disposed = false;
         private Func<T> _factory;
+        #endregion
 
+        /// <summary>
+        /// Public constructor
+        /// </summary>
+        /// <param name="func"></param>
+        /// <param name="initialCapacity"></param>
+        /// <param name="maxCapacity"></param>
+        /// <param name="step"></param>
+        /// <param name="intervalInMinutes"></param>
+        /// <param name="minResourcesRequired"></param>
         public PooledResourceFactory(Func<T> func, int initialCapacity = 16, int maxCapacity = 64, int step = 8, 
             int intervalInMinutes = 5, int minResourcesRequired = 2)
         {
@@ -39,6 +58,7 @@ namespace Ning.Sample
             _timer = new Timer(ScaleResource, null, TimeSpan.FromMinutes(_intervalInMinutes), TimeSpan.FromMinutes(_intervalInMinutes));
         }
 
+        #region Auto scaling
         private void ScaleOut()
         {
             for (int i = 0; i < _step; i++)
@@ -96,7 +116,12 @@ namespace Ning.Sample
                 }
             }
         }
+        #endregion
 
+        /// <summary>
+        /// Loan a resource from the pool
+        /// </summary>
+        /// <returns></returns>
         public T Acquire()
         {
             T? resource;
@@ -126,16 +151,28 @@ namespace Ning.Sample
             return resource;
         }
 
+        /// <summary>
+        /// Release a object back to the pool
+        /// </summary>
+        /// <param name="resource"></param>
         public void Release(T resource)
         {
             _resources.Add(resource);
         }
 
+        /// <summary>
+        /// Get total capacity of the pool
+        /// </summary>
+        /// <returns></returns>
         public int TotalCapacity()
         {
             return _currentCapacity;
         }
 
+        /// <summary>
+        /// Get available capacity of the pool
+        /// </summary>
+        /// <returns></returns>
         public int AvailableCapacity()
         {
             return _resources.Count;
