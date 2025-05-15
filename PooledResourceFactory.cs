@@ -75,25 +75,53 @@ namespace Ning.Sample
 
         private void ScaleResource(object? state = null)
         {
-            lock (_lock)
+            if (Monitor.TryEnter(_lock))
             {
-                if (_lowestResourcesAvailable > _step && _currentCapacity - _initialCapacity > _step)
+                try
                 {
-                    ScaleIn();
-                }
-                else if (_lowestResourcesAvailable < _minResourcesRequired && _currentCapacity < _maxCapacity)
-                {
-                    ScaleOut();
-                }
+                    if (_lowestResourcesAvailable > _step && _currentCapacity - _initialCapacity > _step)
+                    {
+                        ScaleIn();
+                    }
+                    else if (_lowestResourcesAvailable < _minResourcesRequired && _currentCapacity < _maxCapacity)
+                    {
+                        ScaleOut();
+                    }
 
-                _lowestResourcesAvailable = _resources.Count;
-                return;   
+                    _lowestResourcesAvailable = _resources.Count;
+                }
+                finally 
+                {
+                    Monitor.Exit(_lock);
+                }
             }
         }
 
         public T Acquire()
         {
-            T resource = _resources.Take();
+            T? resource;
+            if (_resources.TryTake(out resource))
+            {
+                _lowestResourcesAvailable--;
+                return resource;
+            }
+
+            if (Monitor.TryEnter(_lock))
+            {
+                try
+                {
+                    if (_currentCapacity < _maxCapacity)
+                    {
+                        ScaleOut();
+                    }
+                }
+                finally 
+                { 
+                    Monitor.Exit(_lock); 
+                }
+            }
+
+            resource = _resources.Take();
             _lowestResourcesAvailable--;
             return resource;
         }
@@ -114,6 +142,8 @@ namespace Ning.Sample
         }
 
         #region IDispose
+        ~PooledResourceFactory() => Dispose(false);
+
         public void Dispose()
         {
             Dispose(true);
