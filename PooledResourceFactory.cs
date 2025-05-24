@@ -7,7 +7,7 @@ namespace Ning.Sample
     /// </summary>
     /// <typeparam name="T"></typeparam>
     public interface IPooledResourceFactory<T>
-    { 
+    {
         public T Acquire();
         public void Release(T resource);
         public int TotalCapacity();
@@ -23,10 +23,11 @@ namespace Ning.Sample
         #region Private members
         private int _initialCapacity, _maxCapacity, _step, _intervalInMinutes, _currentCapacity, _lowestResourcesAvailable, _minResourcesRequired;
         private BlockingCollection<T> _resources = new BlockingCollection<T>();
-        private Timer _timer;
+        private Timer? _timer = null;
         private object _lock = new object();
         private bool _disposed = false;
-        private Func<T> _factory;
+        private bool _initialized = false;
+        private Func<T>? _factory = null;
         #endregion
 
         /// <summary>
@@ -38,7 +39,7 @@ namespace Ning.Sample
         /// <param name="step"></param>
         /// <param name="intervalInMinutes"></param>
         /// <param name="minResourcesRequired"></param>
-        public PooledResourceFactory(Func<T> func, int initialCapacity = 16, int maxCapacity = 64, int step = 8, 
+        public PooledResourceFactory(Func<T>? func = null, bool delayInitialization = false, int initialCapacity = 16, int maxCapacity = 64, int step = 8,
             int intervalInMinutes = 5, int minResourcesRequired = 2)
         {
             _initialCapacity = initialCapacity;
@@ -50,12 +51,53 @@ namespace Ning.Sample
             _minResourcesRequired = minResourcesRequired;
             _factory = func;
 
-            for (int i = 0; i < _initialCapacity; i++)
+            if (!delayInitialization)
             {
-                T resource = _factory();
-                _resources.Add(resource);
+                Initialize();
             }
-            _timer = new Timer(ScaleResource, null, TimeSpan.FromMinutes(_intervalInMinutes), TimeSpan.FromMinutes(_intervalInMinutes));
+        }
+
+        /// <summary>
+        /// Delayed initialization
+        /// </summary>
+        /// <param name="func"></param>
+        public void Initialize(Func<T> func)
+        {
+            _factory = func;
+            Initialize();
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <exception cref="NullReferenceException"></exception>
+        private void Initialize()
+        {
+            if (_initialized)
+            {
+                return;
+            }
+
+            lock (_lock)
+            {
+                if (_initialized)
+                {
+                    return;
+                }
+
+                if (_factory == null)
+                {
+                    throw new NullReferenceException("Factory function must be provided before initialization!");
+                }
+                for (int i = 0; i < _initialCapacity; i++)
+                {
+                    T resource = _factory();
+                    _resources.Add(resource);
+                }
+                _timer = new Timer(ScaleResource, null, TimeSpan.FromMinutes(_intervalInMinutes), TimeSpan.FromMinutes(_intervalInMinutes));
+
+                _initialized = true;
+            }
         }
 
         #region Auto scaling
@@ -67,7 +109,11 @@ namespace Ning.Sample
                 {
                     break;
                 }
-                
+
+                if (_factory == null)
+                {
+                    throw new NullReferenceException("Factory function must be provided before auto scaling!");
+                }
                 T newResource = _factory();
                 _resources.Add(newResource);
                 _currentCapacity++;
@@ -110,7 +156,7 @@ namespace Ning.Sample
 
                     _lowestResourcesAvailable = _resources.Count;
                 }
-                finally 
+                finally
                 {
                     Monitor.Exit(_lock);
                 }
@@ -127,27 +173,20 @@ namespace Ning.Sample
             T? resource;
             if (_resources.TryTake(out resource))
             {
-                _lowestResourcesAvailable--;
+                if (_resources.Count < _lowestResourcesAvailable)
+                {
+                    _lowestResourcesAvailable = _resources.Count;
+                }
                 return resource;
             }
 
-            if (Monitor.TryEnter(_lock))
-            {
-                try
-                {
-                    if (_currentCapacity < _maxCapacity)
-                    {
-                        ScaleOut();
-                    }
-                }
-                finally 
-                { 
-                    Monitor.Exit(_lock); 
-                }
-            }
+            ScaleResource();
 
             resource = _resources.Take();
-            _lowestResourcesAvailable--;
+            if (_resources.Count < _lowestResourcesAvailable)
+            {
+                _lowestResourcesAvailable = _resources.Count;
+            }
             return resource;
         }
 
@@ -207,7 +246,10 @@ namespace Ning.Sample
                         }
                     }
                     _resources.Dispose();
-                    _timer.Dispose();
+                    if (_timer != null)
+                    {
+                        _timer.Dispose();
+                    }
                 }
             }
         }

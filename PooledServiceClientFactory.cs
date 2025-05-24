@@ -1,4 +1,5 @@
 ﻿using Microsoft.PowerPlatform.Dataverse.Client;
+using Microsoft.PowerPlatform.Dataverse.Client.Model;
 
 namespace Ning.Sample
 {
@@ -7,6 +8,7 @@ namespace Ning.Sample
     /// </summary>
     public interface IPooledServiceClientFactory : IPooledResourceFactory<ServiceClient>
     {
+        public void Initialize();
     }
 
     /// <summary>
@@ -15,32 +17,33 @@ namespace Ning.Sample
     public class PooledServiceClientFactory : PooledResourceFactory<ServiceClient>, IPooledServiceClientFactory
     {
         #region Private members
-        private ServiceClient _masterServiceClient;
+        private ServiceClient? _masterServiceClient = null;
+        private readonly string _dataverseConnectionString;
         private bool _disposed = false;
         #endregion
 
         /// <summary>
-        /// Factory pattern to get instance
+        /// Public constructor
         /// </summary>
         /// <param name="dataverseConnectionString"></param>
-        /// <returns></returns>
-        public static PooledServiceClientFactory CreatePooledServiceClientFactory(string dataverseConnectionString)
+        public PooledServiceClientFactory(string dataverseConnectionString) : base(null, true)
         {
-            ServiceClient serviceClient = new ServiceClient(dataverseConnectionString);
-            return new PooledServiceClientFactory(serviceClient);
+            _dataverseConnectionString = dataverseConnectionString;
         }
 
         /// <summary>
-        /// Private constructor
+        /// Initialize the pool for Service Client
         /// </summary>
-        private PooledServiceClientFactory(ServiceClient masterServiceClient) : base(() => { 
-            ServiceClient serviceClient = masterServiceClient.Clone();
-            serviceClient.UseWebApi = true;
-            serviceClient.DisableCrossThreadSafeties = true;
-            return serviceClient;
-        })
+        public void Initialize()
         {
-            _masterServiceClient = masterServiceClient;
+            _masterServiceClient = new ServiceClient(_dataverseConnectionString);
+            base.Initialize(() =>
+            {
+                ServiceClient serviceClient = _masterServiceClient.Clone();
+                serviceClient.UseWebApi = true;
+                serviceClient.DisableCrossThreadSafeties = true;
+                return serviceClient;
+            });
         }
 
         #region IDisposable
@@ -54,7 +57,10 @@ namespace Ning.Sample
 
                 if (disposing)
                 {
-                    _masterServiceClient.Dispose();
+                    if (_masterServiceClient != null)
+                    {
+                        _masterServiceClient.Dispose();
+                    }
                 }
             }
 
