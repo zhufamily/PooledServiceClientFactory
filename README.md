@@ -14,11 +14,39 @@ The public interface is prepare for CDI whether for a .NET Core website or an Az
 The main class should be initialized with a valid Dynamics 365 connection string, and a capacity that satisfy normal work load.\
 We assume at the peak time, you might need four times of normal work load, certainly please change that for your situation.\
 If resource is running low and we are within peak capacity limit.  We will increase number or resources in the pool to 50% of the original capacity, for sure you can adjust that based on your need as well.\
-Every 5 minutes, we will check to see if pool is running at a high resource count, while resource usage is low.  If so, we will scale back 50% of the original capacity.  On the other end, we will increase the capacity by 50% of the original if resources are running low.  Again, you can change that for your own situation; for us, this is NOT a real-time system, so 5 minutes is (far) more than enough.
+Every 5 minutes, we will check to see if pool is running at a high resource count, while resource usage is low.  If so, we will scale back 50% of the original capacity.  On the other end, we will increase the capacity by 50% of the original if resources are running low.  Again, you can change that for your own situation; for us, this is NOT a real-time system, so 5 minutes is (far) more than enough.\
+## Delayed Initializer
+For Azure Function in particular, we have added delayed initializer for the resource pool.\n
+This will allow fast and simple start host and Azure function with minimial information.\n
+When host started, we will then initialize the heavy services / resources for the resource pool. 
 ## Sample usage
-In program.cs, conduct a CDI like following.
+In program.cs, start services.
 ```
-services.AddSingleton<IPooledServiceClientFactory>(PooledServiceClientFactory.CreatePooledServiceClientFactory(YOUR_CRM_CONNECTION_STRING, YOUR_INIT_CAPACITY));
+services.AddSingleton<IPooledServiceClientFactory>(new PooledServiceClientFactory(YOUR_CRM_CONNECTION_STRING));
+services.AddHostedService<HostStartupHandler>();
+```
+Add a class for host service (event)
+```
+public class HostStartupHandler : IHostedService
+{
+    private readonly IPooledServiceClientFactory _pooledServiceClientFactory;
+
+    public HostStartupHandler(IPooledServiceClientFactory pooledServiceClientFactory)
+    {
+        _pooledServiceClientFactory = pooledServiceClientFactory;
+    }
+
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        _pooledServiceClientFactory.Initialize();
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        return Task.CompletedTask;
+    }
+}
 ```
 Where-ever you need a scoped instance, insert codes like following, assuming you have done CDI for your class.
 ```
