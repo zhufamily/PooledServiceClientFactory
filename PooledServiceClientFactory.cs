@@ -46,6 +46,17 @@ namespace Ning.Sample
             });
         }
 
+        /// <summary>
+        /// Release connection back to pool
+        /// and reset user to empty
+        /// </summary>
+        /// <param name="resource"></param>
+        public override void Release(ServiceClient resource)
+        {
+            resource.CallerId = Guid.Empty;
+            base.Release(resource);
+        }
+
         #region IDisposable
         ~PooledServiceClientFactory() => Dispose(false);
 

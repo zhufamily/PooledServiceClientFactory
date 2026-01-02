@@ -1,4 +1,5 @@
-﻿using System.Collections.Concurrent;
+﻿using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
 
 namespace Ning.Sample
 {
@@ -28,6 +29,7 @@ namespace Ning.Sample
         private bool _disposed = false;
         private bool _initialized = false;
         private Func<T>? _factory = null;
+        private ILogger<PooledResourceFactory<T>>? _logger = null;
         #endregion
 
         /// <summary>
@@ -40,7 +42,7 @@ namespace Ning.Sample
         /// <param name="intervalInMinutes"></param>
         /// <param name="minResourcesRequired"></param>
         public PooledResourceFactory(Func<T>? func = null, bool delayInitialization = false, int initialCapacity = 16, int maxCapacity = 64, int step = 8,
-            int intervalInMinutes = 5, int minResourcesRequired = 2)
+            int intervalInMinutes = 5, int minResourcesRequired = 2, ILoggerFactory? loggerFactory = null)
         {
             _initialCapacity = initialCapacity;
             _currentCapacity = initialCapacity;
@@ -50,6 +52,11 @@ namespace Ning.Sample
             _intervalInMinutes = intervalInMinutes;
             _minResourcesRequired = minResourcesRequired;
             _factory = func;
+
+            if (loggerFactory != null)
+            {
+                _logger = loggerFactory.CreateLogger<PooledResourceFactory<T>>();
+            }
 
             if (!delayInitialization)
             {
@@ -63,7 +70,10 @@ namespace Ning.Sample
         /// <param name="func"></param>
         public void Initialize(Func<T> func)
         {
-            _factory = func;
+            if (func != null)
+            {
+                _factory = func;
+            }
             Initialize();
         }
 
@@ -87,8 +97,13 @@ namespace Ning.Sample
 
                 if (_factory == null)
                 {
+                    if (_logger != null)
+                    {
+                        _logger.LogError($"Factory function must be provided before initialization!");
+                    }
                     throw new NullReferenceException("Factory function must be provided before initialization!");
                 }
+
                 for (int i = 0; i < _initialCapacity; i++)
                 {
                     T resource = _factory();
@@ -97,6 +112,10 @@ namespace Ning.Sample
                 _timer = new Timer(ScaleResource, null, TimeSpan.FromMinutes(_intervalInMinutes), TimeSpan.FromMinutes(_intervalInMinutes));
 
                 _initialized = true;
+                if (_logger != null)
+                {
+                    _logger.LogInformation($"Initialization finished successfully with capacity {_resources.Count}");
+                }
             }
         }
 
@@ -145,7 +164,7 @@ namespace Ning.Sample
             {
                 try
                 {
-                    if (_lowestResourcesAvailable > _step && _currentCapacity - _initialCapacity > _step)
+                    if (_lowestResourcesAvailable >= _step && _currentCapacity - _initialCapacity >= _step)
                     {
                         ScaleIn();
                     }
@@ -155,6 +174,17 @@ namespace Ning.Sample
                     }
 
                     _lowestResourcesAvailable = _resources.Count;
+                    if (_logger != null)
+                    {
+                        _logger.LogInformation($"Auto scale finished successfully with new capacity {_resources.Count}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (_logger != null)
+                    {
+                        _logger.LogError(ex, $"Auto scale finished unsuccessfully with new capacity {_resources.Count}");
+                    }
                 }
                 finally
                 {
@@ -194,7 +224,7 @@ namespace Ning.Sample
         /// Release a object back to the pool
         /// </summary>
         /// <param name="resource"></param>
-        public void Release(T resource)
+        public virtual void Release(T resource)
         {
             _resources.Add(resource);
         }
